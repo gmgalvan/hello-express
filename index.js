@@ -9,7 +9,7 @@ app.get('/', (req, res) => {
 app.get('/health', (req, res) => {
   const healthcheck = {
     uptime: process.uptime(),
-    message: 'OK',
+    message: 'OKAY',
     timestamp: Date.now()
   };
   try {
