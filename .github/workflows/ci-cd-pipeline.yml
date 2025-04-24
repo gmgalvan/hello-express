@@ -4,11 +4,12 @@ on:
   push:
     branches:
       - develop
+      - master
 
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
-    environment: hello-express
+    environment: ${{ github.ref == 'refs/heads/master' && 'production' || 'development' }}
     permissions:
       contents: read
       id-token: write
@@ -16,6 +17,15 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Set environment variables
+        id: set-env
+        run: |
+          if [[ ${{ github.ref }} == 'refs/heads/master' ]]; then
+            echo "ENV_NAME=prod" >> $GITHUB_ENV
+          else
+            echo "ENV_NAME=dev" >> $GITHUB_ENV
+          fi
 
       - name: Authenticate to GCP
         uses: google-github-actions/auth@v2
@@ -33,19 +43,19 @@ jobs:
       - name: Build Docker image
         run: |
           docker build \
-            -t us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/hello-repo/hello-express:${{ github.sha }} \
+            --build-arg NODE_ENV=${{ env.ENV_NAME == 'prod' && 'production' || 'development' }} \
+            -t us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/hello-repo/hello-express:${{ env.ENV_NAME }}-${{ github.sha }} \
             .
 
       - name: Push Docker image
         run: |
           docker push \
-            us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/hello-repo/hello-express:${{ github.sha }}
-
+            us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/hello-repo/hello-express:${{ env.ENV_NAME }}-${{ github.sha }}
 
   deploy-to-app-engine:
     needs: build-and-push
     runs-on: ubuntu-latest
-    environment: hello-express
+    environment: ${{ github.ref == 'refs/heads/master' && 'production' || 'development' }}
     permissions:
       contents: read
       id-token: write
@@ -53,6 +63,17 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Set environment variables
+        id: set-env
+        run: |
+          if [[ ${{ github.ref }} == 'refs/heads/master' ]]; then
+            echo "ENV_NAME=prod" >> $GITHUB_ENV
+            echo "APP_YAML=app.prod.yaml" >> $GITHUB_ENV
+          else
+            echo "ENV_NAME=dev" >> $GITHUB_ENV
+            echo "APP_YAML=app.dev.yaml" >> $GITHUB_ENV
+          fi
 
       - name: Authenticate to GCP
         uses: google-github-actions/auth@v2
@@ -66,6 +87,6 @@ jobs:
 
       - name: Deploy to App Engine Flex
         run: |
-          gcloud app deploy \
-            --image-url=us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/hello-repo/hello-express:${{ github.sha }} \
+          gcloud app deploy ${{ env.APP_YAML }} \
+            --image-url=us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/hello-repo/hello-express:${{ env.ENV_NAME }}-${{ github.sha }} \
             --quiet

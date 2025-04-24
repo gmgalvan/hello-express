@@ -1,0 +1,15 @@
+service: default
+runtime: custom
+env: flex
+automatic_scaling:
+  min_num_instances: 2
+  max_num_instances: 10
+  cool_down_period_sec: 120
+  cpu_utilization:
+    target_utilization: 0.7
+resources:
+  cpu: 2
+  memory_gb: 4
+  disk_size_gb: 10
+env_variables:
+  NODE_ENV: production

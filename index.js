@@ -2,6 +2,9 @@ const express = require('express');
 const app = express();
 const PORT = process.env.PORT || 8080;
 
+// Get the current environment
+const environment = process.env.NODE_ENV || 'development';
+
 app.get('/', (req, res) => {
   res.send('Hello, World!');
 });
@@ -9,7 +12,7 @@ app.get('/', (req, res) => {
 app.get('/health', (req, res) => {
   const healthcheck = {
     uptime: process.uptime(),
-    message: 'OKAY',
+    message: 'ok',
     timestamp: Date.now()
   };
   try {
@@ -20,6 +23,19 @@ app.get('/health', (req, res) => {
   }
 });
 
+// New endpoint to check environment
+app.get('/environment', (req, res) => {
+  const envInfo = {
+    environment: environment,
+    nodeVersion: process.version,
+    hostname: process.env.HOSTNAME || 'unknown',
+    timestamp: new Date().toISOString(),
+    service: process.env.GAE_SERVICE || 'local'
+  };
+  
+  res.status(200).json(envInfo);
+});
+
 app.listen(PORT, () => {
-  console.log(`App listening on port ${PORT}`);
+  console.log(`App listening on port ${PORT} in ${environment} environment`);
 });
