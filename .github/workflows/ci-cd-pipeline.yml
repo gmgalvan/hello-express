@@ -1,17 +1,12 @@
-name: CI & Manual CD Pipeline
+name: CI & CD Pipeline
 
 on:
-  # 1) Auto-build on develop pushes
   push:
     branches:
       - develop
-  # 2) Manual deploy trigger
-  workflow_dispatch:
 
 jobs:
   build-and-push:
-    # Only run this job on a push to develop
-    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
     runs-on: ubuntu-latest
     environment: hello-express
     permissions:
@@ -33,8 +28,7 @@ jobs:
           project_id: ${{ secrets.GCP_PROJECT_ID }}
 
       - name: Configure Docker for Artifact Registry
-        run: |
-          gcloud auth configure-docker us-central1-docker.pkg.dev
+        run: gcloud auth configure-docker us-central1-docker.pkg.dev
 
       - name: Build Docker image
         run: |
@@ -47,10 +41,8 @@ jobs:
           docker push \
             us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/hello-repo/hello-express:${{ github.sha }}
 
-
   deploy-to-app-engine:
-    # Only run when manually dispatched
-    if: github.event_name == 'workflow_dispatch'
+    needs: build-and-push
     runs-on: ubuntu-latest
     environment: hello-express
     permissions:
