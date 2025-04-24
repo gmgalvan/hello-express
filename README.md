@@ -1,6 +1,6 @@
-# 🚀 Node.js "Hello World" on App Engine Flex with Docker & GitHub Actions CI/CD
+# 🚀 Node.js App on App Engine Flex with Docker & GitHub Actions CI/CD
 
-This guide outlines the steps to deploy a Node.js application to Google Cloud Platform's App Engine Flexible environment using Docker and GitHub Actions for CI/CD. ✨
+This guide outlines the steps to deploy a Node.js application to Google Cloud Platform's App Engine Flexible environment using Docker and GitHub Actions for CI/CD with separate development and production environments. ✨
 
 ## 1. 📋 Prerequisites
 
@@ -18,7 +18,7 @@ This guide outlines the steps to deploy a Node.js application to Google Cloud Pl
     - **App Engine Deployer** (to deploy)  
     - **Service Usage Admin** (for enabling APIs in CI)  
 
-## 2. 💻 Create the Express "Hello, World!" App
+## 2. 💻 Create the Express App
 
 1. Initialize a new Node.js project:
 ```
@@ -27,50 +27,46 @@ npm init -y
 npm install express
 ```
 
-2. Create the main application file (`index.js`) with a basic Express server
+2. Create the main application file (`index.js`) with a basic Express server that includes environment information.
 
-3. Update `package.json` to include a start script:
-```
-"scripts": {
-  "start": "node index.js"
-}
-```
+3. Update `package.json` to include a start script.
 
 ## 3. 🐳 Dockerize the App
 
-1. Create a `Dockerfile` for your application
+1. Create a `Dockerfile` for your application that accepts a NODE_ENV build argument.
 
-2. Create a `.dockerignore` file:
-```
-node_modules
-npm-debug.log*
-.DS_Store
-```
+2. Create a `.dockerignore` file to exclude unnecessary files.
 
-## 4. ⚙️ Configure App Engine Flex
+## 4. ⚙️ Configure App Engine Flex for Multiple Environments
 
-1. Create an `app.yaml` file with custom runtime configuration:
-```
-runtime: custom
-env: flex
-```
+1. Create an `app.dev.yaml` file for the development environment with:
+   - `service: development`
+   - Appropriate scaling settings
+   - `NODE_ENV: development` in environment variables
+
+2. Create an `app.prod.yaml` file for the production environment with:
+   - `service: default`
+   - Production-appropriate scaling settings
+   - `NODE_ENV: production` in environment variables
 
 ## 5. 🧪 Local Testing
 
-1. Build and run your Docker container:
+1. Build and run your Docker container with the development environment:
 ```
-docker build -t hello-express-app .
+docker build -t hello-express-app --build-arg NODE_ENV=development .
 docker run --rm -p 8080:8080 hello-express-app
 ```
 
-2. Test by visiting `http://localhost:8080`
+2. Test by visiting:
+   - `http://localhost:8080` - Main application
+   - `http://localhost:8080/health` - Health check
+   - `http://localhost:8080/environment` - Environment info
 
 ## 6. ☁️ Google Cloud CLI Setup
 
 1. Initialize and login to Google Cloud:
 ```
 gcloud init --no-launch-browser
-# or simply: gcloud init
 ```
 
 2. Set your project:
@@ -87,6 +83,13 @@ gcloud services enable appengine.googleapis.com \
 gcloud app create --region=us-central
 ```
 
+4. Create Artifact Registry repository:
+```
+gcloud artifacts repositories create hello-repo \
+    --repository-format=docker \
+    --location=us-central1
+```
+
 ### 🔧 Troubleshooting Notes
 
 - If you encounter `PERMISSION_DENIED`, link a billing account:
@@ -97,67 +100,153 @@ gcloud beta billing projects link $PROJECT_ID \
 
 - If `gcloud init` errors in WSL, use `--no-launch-browser` or install chromium/xdg-utils
 
-- Update SDK if needed: `gcloud components update`
-
-## 7. 🚢 Deploy Manually
-
-1. Deploy your application:
+- Update SDK if needed: 
 ```
-gcloud app deploy --quiet
+gcloud components update
 ```
 
-2. Open your deployed application:
+## 7. 🚢 Manual Deployment to Different Environments
+
+1. Build Docker images for both environments:
 ```
-gcloud app browse
+# Build development image
+docker build -t us-central1-docker.pkg.dev/YOUR_PROJECT_ID/hello-repo/hello-express:dev-manual \
+  --build-arg NODE_ENV=development .
+
+# Build production image
+docker build -t us-central1-docker.pkg.dev/YOUR_PROJECT_ID/hello-repo/hello-express:prod-manual \
+  --build-arg NODE_ENV=production .
 ```
 
-3. Inspect which image is running:
+2. Push images to Artifact Registry:
 ```
-gcloud app versions list \
-  --service=default \
-  --format="table(id, deployment.container.image)"
+# Authenticate Docker to Artifact Registry
+gcloud auth configure-docker us-central1-docker.pkg.dev
+
+# Push development image
+docker push us-central1-docker.pkg.dev/YOUR_PROJECT_ID/hello-repo/hello-express:dev-manual
+
+# Push production image
+docker push us-central1-docker.pkg.dev/YOUR_PROJECT_ID/hello-repo/hello-express:prod-manual
 ```
 
-## 8. 🔄 GitHub Actions CI/CD Setup
+3. Deploy to development environment:
+```
+gcloud app deploy app.dev.yaml \
+  --image-url=us-central1-docker.pkg.dev/YOUR_PROJECT_ID/hello-repo/hello-express:dev-manual
+```
+
+4. Deploy to production environment:
+```
+gcloud app deploy app.prod.yaml \
+  --image-url=us-central1-docker.pkg.dev/YOUR_PROJECT_ID/hello-repo/hello-express:prod-manual
+```
+
+5. Access your environments:
+   - Development: `https://development-dot-YOUR_PROJECT_ID.appspot.com`
+   - Production: `https://YOUR_PROJECT_ID.appspot.com`
+
+6. Managing environment costs:
+   - Stop development environment when not in use:
+   ```
+   gcloud app services stop development
+   ```
+   - Start development environment when needed:
+   ```
+   gcloud app services start development
+   ```
+
+## 8. 🔄 GitHub Actions CI/CD Setup for Multiple Environments
 
 ### 8.1. 🔐 Create & Store Secrets
 
-1. Create service account key JSON and store it as GitHub Secret `GCP_SA_KEY`
-2. Store your Project ID as GitHub Secret `GCP_PROJECT_ID`
-3. Optionally create an Environment named `hello-express` or place secrets in Repository scope
+1. Create service account key:
+```
+gcloud iam service-accounts create github-actions-sa \
+  --display-name="GitHub Actions Service Account"
+
+gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
+  --member="serviceAccount:github-actions-sa@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
+  --role="roles/owner"
+
+gcloud iam service-accounts keys create key.json \
+  --iam-account=github-actions-sa@YOUR_PROJECT_ID.iam.gserviceaccount.com
+```
+
+2. Add GitHub Secrets:
+   - Create `GCP_SA_KEY` with contents of key.json
+   - Create `GCP_PROJECT_ID` with your project ID
+
+3. Create GitHub Environments:
+   - `development` - For develop branch deployments
+   - `production` - For master branch deployments (can add protection rules)
 
 ### 8.2. 📄 Create Workflow File
 
-1. Create a workflow file at `.github/workflows/ci-cd-pipeline.yml` with build and deploy jobs
+1. Create a workflow file at `.github/workflows/ci-cd-pipeline.yml`
 
-### 🔑 Key Configuration Points
+## 9. 📝 Environment Management
 
-- Use `needs: build-and-push` to ensure deploy only runs on successful build
-- Include `actions/checkout` in each job to access app.yaml & Dockerfile
-- Enable App Engine Admin API before deployment
-- Correctly use environment or repository secrets
+### Branch Strategy
+- **develop branch**: Changes here deploy to the development environment
+- **master branch**: Changes here deploy to the production environment
 
-## 9. 📝 Post-Setup Notes
+### Accessing Environments
+- Development: `https://development-dot-YOUR_PROJECT_ID.appspot.com`
+- Production: `https://YOUR_PROJECT_ID.appspot.com`
 
-- Folders in GCP require an Organization
-- View resource inventory:
+### Environment Endpoints
+- `/environment` - Shows current environment details
+- `/health` - Health check endpoint
+
+### Cost Management
+To save costs for the development environment when not in use:
 ```
-gcloud asset search-all-resources --scope=projects/$PROJECT_ID
+gcloud app services stop development
 ```
 
-- View logs:
+To start it again when needed:
 ```
+gcloud app services start development
+```
+
+## 10. 🔍 Monitoring and Troubleshooting
+
+- View logs for specific environments:
+```
+# Development logs
+gcloud app logs tail -s development
+
+# Production logs
 gcloud app logs tail -s default
 ```
 
-- Customize scaling and settings by updating `app.yaml` with parameters like `max_instances`, `resources`, and health check configurations
+- View deployed versions in each environment:
+```
+# Development versions
+gcloud app versions list --service=development
 
-- For Error 13, use `--verbosity=debug` and inspect Cloud Build logs
+# Production versions
+gcloud app versions list --service=default
+```
 
-- Keep Google Cloud SDK on WSL filesystem (not under `/mnt/c`) for best performance 
+- Check resource usage and billing:
+```
+# View App Engine resource usage
+gcloud app instances list --service=development
+gcloud app instances list --service=default
+
+# View current resource quotas
+gcloud compute project-info describe --format="yaml(quotas)"
+```
+
+- View existing services:
+```
+gcloud app services list
+```
 
 ---
 
 ## 🎉 Congratulations!
 
-You now have a fully automated CI/CD pipeline that builds your Node.js Express app, packages it with Docker, pushes to Artifact Registry, and deploys to App Engine Flex—all hands-off on each push to your repository!
+You now have a fully automated CI/CD pipeline with separate development and production environments. Each push to develop or master will automatically build, deploy, and run your application in the appropriate environment!
