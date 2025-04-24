@@ -10,6 +10,7 @@ jobs:
   build-and-push:
     if: github.ref == 'refs/heads/develop'
     runs-on: ubuntu-latest
+    environment: hello-express
     permissions:
       contents: read
       id-token: write
@@ -41,6 +42,7 @@ jobs:
     if: github.ref == 'refs/heads/main'
     needs: build-and-push
     runs-on: ubuntu-latest
+    environment: hello-express
     permissions:
       contents: read
       id-token: write
